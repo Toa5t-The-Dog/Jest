@@ -3,6 +3,7 @@ services:
     name: jest-room-relay
     runtime: node
     plan: free
+    rootDir: Jest_Render_Relay_Deploy
     buildCommand: npm install --omit=dev --ignore-scripts
     startCommand: npm start
     healthCheckPath: /health
