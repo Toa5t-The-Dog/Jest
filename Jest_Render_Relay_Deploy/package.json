@@ -1,0 +1,13 @@
+{
+  "name": "jest-room-relay",
+  "version": "0.6.0",
+  "private": true,
+  "description": "Player-hosted Jest multiplayer room-code relay",
+  "main": "relay.cjs",
+  "scripts": {
+    "start": "node relay.cjs"
+  },
+  "engines": {
+    "node": ">=22.0.0 <25.0.0"
+  }
+}
