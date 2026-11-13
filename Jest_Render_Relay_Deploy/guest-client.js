@@ -18,7 +18,7 @@
   clearRetry();if(manualLeave||!activeCode)return;
   const url=new URL('/socket',location.href);url.protocol=url.protocol==='https:'?'wss:':'ws:';
   const socket=new WebSocket(url);ws=socket;
-  status(attempts?'Reconnecting to friend room…':'Connecting to friend room…');$('join').disabled=true;
+  status(attempts?'Reconnecting to Rival room…':'Connecting to Rival room…');$('join').disabled=true;
   socket.onopen=()=>socket.send(JSON.stringify({type:'join',code:activeCode,name:activeName,reconnectToken:tokenFor(activeCode)}));
   socket.onmessage=e=>{
    let m;try{m=JSON.parse(e.data)}catch{return}
@@ -27,7 +27,7 @@
     attempts=0;clearRetry();
     if(m.reconnectToken)sessionStorage.setItem('jest.friend-reconnect',JSON.stringify({code:m.code,reconnectToken:m.reconnectToken}));
     $('form').style.display='none';$('connected').style.display='block';$('who').textContent='Connected to room '+m.code;
-    status('Waiting for host to start a friend match.');
+    status('Waiting for host to start a Rival match.');
     if(ready)socket.send(JSON.stringify({type:'ready',ready:true}));
     socket.send(JSON.stringify({type:'toHost',payload:{kind:'requestState'}}));
    }else if(m.type==='hostMessage'){
@@ -55,7 +55,7 @@
    if(ws!==socket||manualLeave)return;
    render?.(null);
    attempts++;
-   if(attempts>8){status('Cannot reconnect. Ask your friend to make a new room.');$('connected').style.display='none';$('form').style.display='block';$('join').disabled=false;return}
+   if(attempts>8){status('Cannot reconnect. Ask your Rival to make a new room.');$('connected').style.display='none';$('form').style.display='block';$('join').disabled=false;return}
    const delay=Math.min(1000*2**(attempts-1),15000);
    status('Connection lost. Reconnecting automatically…');
    retryTimer=setTimeout(connect,delay);

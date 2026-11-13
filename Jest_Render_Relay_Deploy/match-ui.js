@@ -7,13 +7,13 @@
   const create=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=String(text);if(cls)e.className=cls;return e};
   return function render(state){
    root.replaceChildren();if(!state){root.hidden=true;return}root.hidden=false;
-   root.append(create('h4',`Friend Match · Battle ${state.battle}`));
+   root.append(create('h4',`Rival Match · Battle ${state.battle}`));
    root.append(create('p',state.note,'mp-muted'));
-   root.append(create('p',`You: ${state.chips[state.seat]} chips · Friend: ${state.chips[1-state.seat]} chips · Bank: ${state.bank}`));
+   root.append(create('p',`You: ${state.chips[state.seat]} chips · Rival: ${state.chips[1-state.seat]} chips · Bank: ${state.bank}`));
    if(state.lastBattle)root.append(create('p',`Last battle: ${state.lastBattle.scores.join(' vs ')} · chip transfer to host ${state.lastBattle.chipTransferToHost>=0?'+':''}${state.lastBattle.chipTransferToHost}`,'mp-muted'));
    const publicJesters=state.jesters||[[],[]];
-   root.append(create('p',`Your Jesters: ${publicJesters[state.seat]?.join(', ')||'None'} · Friend's Jesters: ${publicJesters[1-state.seat]?.join(', ')||'None'} (selected base abilities active; others pending)`,'mp-muted'));
-   root.append(create('p',`Your Trick cards (${state.hand?.length||0}/5) · Friend has ${state.rivalHandCount||0} hidden Trick cards`,'mp-muted'));
+   root.append(create('p',`Your Jesters: ${publicJesters[state.seat]?.join(', ')||'None'} · Rival's Jesters: ${publicJesters[1-state.seat]?.join(', ')||'None'} (selected base abilities active; others pending)`,'mp-muted'));
+   root.append(create('p',`Your Trick cards (${state.hand?.length||0}/5) · Rival has ${state.rivalHandCount||0} hidden Trick cards`,'mp-muted'));
    const act=(label,action)=>{const b=create('button',label);b.type='button';b.className='mp-action';b.addEventListener('click',()=>onAction(state.decisionId,action));root.append(b);};
    const hand=create('div',undefined,'mp-hand');
    const cardButton=(container,label,action)=>{
@@ -64,7 +64,7 @@
    }
    if(state.phase==='afterBattle'){
     root.append(create('h4',`After Battle ${state.battle} · Trick decisions`));
-    if(!state.canAct){root.append(create('p','Waiting for your friend’s after-battle decisions…'));return;}
+    if(!state.canAct){root.append(create('p','Waiting for your Rival’s after-battle decisions…'));return;}
     for(const card of state.afterChoices||[]){
      if(card==='burn'){
       act('Both players gain up to 2 chips from bank',{type:'afterPlay',card:'burn',mode:'gain'});
@@ -79,13 +79,13 @@
      root.append(create('p',`${offer.name} · ${offer.price} chips`));
      if(offer.canBuy)act(`Buy ${offer.name}`,{type:'scoutBuy'});
      act('Decline Jester',{type:'scoutDecline'});
-    }else root.append(create('p','Waiting for your friend’s private Jester offer…'));
+    }else root.append(create('p','Waiting for your Rival’s private Jester offer…'));
     return;
    }
    if(state.phase==='shop'){
     const s=state.shop;root.append(create('h4',`Shop ${s.visit} · ${s.kind==='trick'?'Tricks':'Jesters'} (stage ${s.stage}/${s.stages})`));
-    root.append(create('p',`Your private offers: ${s.offers.length}; friend's offers: ${s.rivalOfferCount}. You have ${s.purchasesLeft} purchase${s.purchasesLeft===1?'':'s'} remaining.`,'mp-muted'));
-    if(!state.canAct){root.append(create('p','Waiting for your friend to finish shopping…'));return;}
+    root.append(create('p',`Your private offers: ${s.offers.length}; Rival's offers: ${s.rivalOfferCount}. You have ${s.purchasesLeft} purchase${s.purchasesLeft===1?'':'s'} remaining.`,'mp-muted'));
+    if(!state.canAct){root.append(create('p','Waiting for your Rival to finish shopping…'));return;}
     for(const offer of s.offers)act(`Buy ${offer.name} — ${offer.price} chips${offer.abilityAvailable?'':' (ability pending)'}`,{type:'buy',index:offer.index});
     if(s.kind==='trick'&&state.hand?.length){
      root.append(create('p','Discard a Trick to make room if your hand is full.','mp-muted'));
@@ -93,7 +93,7 @@
     }
     act('Finish shopping',{type:'pass'});return;
    }
-   root.append(create('p',state.canAct?'Your turn.':'Waiting for your friend…'));
+   root.append(create('p',state.canAct?'Your turn.':'Waiting for your Rival…'));
    if(state.dice?.length){
     const row=create('div',undefined,'mp-dice');const checks=[];
     for(let i=0;i<state.dice.length;i++){
