@@ -33,15 +33,19 @@ function allowsMessage(client){
  if(!client.rate||now>=client.rate.until)client.rate={until:now+10000,count:0};
  return ++client.rate.count<=400; // generous limit even for rapid state updates
 }
-function leave(client){
+function leave(client,details={}){
  if(!client.room)return;
+ const reasonCode=typeof details.reasonCode==='string'&&/^REL-[A-Z][0-9]{3}$/.test(details.reasonCode)?details.reasonCode:(client.explicitLeave?'REL-C200':'REL-C100');
+ const closeCode=Number.isInteger(details.closeCode)&&details.closeCode>=1000&&details.closeCode<=4999?details.closeCode:null;
+ // No room identifiers, session tokens, user names or private match state in logs.
+ console.log(JSON.stringify({event:'relay_disconnect',role:client.role==='host'?'host':'guest',reasonCode,closeCode}));
  const room=client.room;client.room=null;
  if(client.role==='host'){
   if(client.explicitLeave)destroyRoom(room);
   else if(room.host===client){
    room.host=null;room.hostResumeUntil=Date.now()+HOST_GRACE_MS;
    // A guest with an open socket also must stop submitting decisions.
-   room.guest?.send({type:'hostDisconnected',reconnectSeconds:Math.ceil(HOST_GRACE_MS/1000)});
+   room.guest?.send({type:'hostDisconnected',reconnectSeconds:Math.ceil(HOST_GRACE_MS/1000),reasonCode,closeCode});
    clearTimeout(room.hostExpiryTimer);
    room.hostExpiryTimer=setTimeout(()=>{
     if(room.host===null&&rooms.get(room.code)===room)destroyRoom(room,'hostLeft');
@@ -52,7 +56,7 @@ function leave(client){
   room.guest=null;
   if(client.explicitLeave){room.guestTicket=null;room.guestName=null}
   room.guestReady=false;
-  room.host?.send({type:'guestLeft'});
+  room.host?.send({type:'guestLeft',reasonCode,closeCode});
  }
  client.role=null;
 }
@@ -144,7 +148,7 @@ function handle(client,message){
   // Host must still validate decision ID, action shape and whose turn it is.
   const payload=message.payload;
   if(!payload||typeof payload!=='object'||Array.isArray(payload)||
-     !['matchAction','requestState'].includes(payload.kind)||
+     !['matchAction','requestState','diceSkin'].includes(payload.kind)||
      Buffer.byteLength(JSON.stringify(payload),'utf8')>1000)
     return client.send({type:'error',error:'Invalid game message'});
   if(!client.room.host)return client.send({type:'hostDisconnected',reconnectSeconds:Math.ceil(HOST_GRACE_MS/1000)});
@@ -158,14 +162,12 @@ function handle(client,message){
 const server=http.createServer((req,res)=>{
  const uri=new URL(req.url,'http://localhost');
  if(req.method!=='GET'){res.writeHead(405);return res.end()}
- if(uri.pathname==='/health')return(res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}),res.end(JSON.stringify({ok:true,service:'jest-room-relay'})));
- if(uri.pathname==='/match-ui.js'||uri.pathname==='/guest-client.js'){
-  res.writeHead(200,{'Content-Type':'application/javascript; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-  return res.end(fs.readFileSync(path.join(__dirname,uri.pathname==='/match-ui.js'?'match-ui.js':'guest-client.js')));
- }
+ if(uri.pathname==='/health')return(res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}),res.end(JSON.stringify({ok:true,service:'jest-room-relay',relayRevision:'p1-p3-reconnect-v0.28.6',releaseVersion:'0.28.6',maxFrameBytes:8192})));
+ // A match must be joined from an installed copy of Jest. The relay only
+ // carries WebSocket messages; it never hosts a playable guest application.
  if(uri.pathname==='/'||uri.pathname==='/join'){
-  const page=fs.readFileSync(path.join(__dirname,'guest.html'));
-  res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"});return res.end(page);
+  res.writeHead(200,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+  return res.end('Jest room relay. Open your own copy of Jest, select Online with Friends, and enter the room code.');
  }
  res.writeHead(404);res.end('Not found');
 });
@@ -177,14 +179,14 @@ server.on('upgrade',(req,socket,head)=>{
  // Prefer the forwarded client address only in a Render-managed environment.
  const forwarded=process.env.RENDER?String(req.headers['x-forwarded-for']||'').split(',')[0].trim():'';
  const client={role:null,room:null,ip:forwarded||req.socket.remoteAddress,send:null};
- const ws=acceptWebSocket(req,socket,head,msg=>handle(client,msg),()=>leave(client));
+ const ws=acceptWebSocket(req,socket,head,msg=>handle(client,msg),details=>leave(client,details));
  if(ws){client.ws=ws;client.send=obj=>ws.send(obj);}
 });
 const cleanup=setInterval(()=>{
  const now=Date.now();for(const room of rooms.values())if(now-room.lastActivity>ROOM_IDLE_LIFETIME){room.host?.send({type:'expired'});destroyRoom(room,'expired')}
  for(const [ip,v]of visitors)if(now>v.reset)visitors.delete(ip);
 },60000);cleanup.unref();
-server.listen(PORT,HOST,()=>console.log(`Jest multiplayer relay listening on ${HOST}:${PORT} (Render WSS via the public service URL)`));
+server.listen(PORT,HOST,()=>console.log(`Jest multiplayer relay p1-p3-reconnect-v0.28.6 listening on ${HOST}:${PORT} (Render WSS via the public service URL)`));
 function shutdown(signal){
  for(const room of rooms.values()){try{room.host?.send({type:'hostShutdown'});room.guest?.send({type:'hostShutdown'})}catch{}}
  server.close(()=>process.exit(0));
