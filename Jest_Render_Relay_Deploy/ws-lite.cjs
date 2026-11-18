@@ -3,8 +3,8 @@
 // text frames; fragmented text messages and interleaved control frames are valid.
 const crypto = require('node:crypto');
 const {TextDecoder} = require('node:util');
-const MAX_MESSAGE = 8192;
-const MAX_FRAME = 8192;
+const MAX_MESSAGE = 65536;
+const MAX_FRAME = 65536;
 const CLOSE_TIMEOUT_MS = 1000;
 
 function sendFrame(socket, opcode, payload = Buffer.alloc(0)) {
@@ -40,10 +40,10 @@ function acceptWebSocket(req, socket, head, onMessage, onClose) {
   onClose?.(closeDetails);
  };
  const sendClose = code => {if (!closeSent) {closeSent = true; sendFrame(socket, 8, closePayload(code));}};
- const beginClose = (code = 1000, reasonCode = 'REL-C200') => {
+ const beginClose = (code = 1000, reasonCode = 'REL-C200', frameBytes = null) => {
   if (closing || closed) return;
   closing = true;
-  closeDetails = {reasonCode, closeCode:code};
+  closeDetails = {reasonCode, closeCode:code, ...(Number.isSafeInteger(frameBytes) && frameBytes >= 0 ? {frameBytes} : {})};
   sendClose(code);
   // RFC 6455: give the peer time to acknowledge the Close frame. Destroy
   // only if it remains unresponsive. Do not drop the Close frame on the floor.
@@ -55,11 +55,11 @@ function acceptWebSocket(req, socket, head, onMessage, onClose) {
   }, CLOSE_TIMEOUT_MS);
   closeTimer.unref?.();
  };
- const fail = (reasonCode, code = 1002) => {
+ const fail = (reasonCode, code = 1002, frameBytes = null) => {
   // Discard the rejected input so the peer's subsequent Close acknowledgment
   // isn't parsed as though it were part of the malformed frame.
   pending = Buffer.alloc(0); fragments = []; fragmentedBytes = 0; fragmented = false;
-  beginClose(code, reasonCode);
+  beginClose(code, reasonCode, frameBytes);
  };
  const deliver = bytes => {
   let message;
@@ -88,10 +88,10 @@ function acceptWebSocket(req, socket, head, onMessage, onClose) {
     if (pending.length < 10) break;
     const bigSize = pending.readBigUInt64BE(2);
     if (bigSize >> 63n) return fail('REL-F105');
-    if (bigSize > BigInt(MAX_FRAME)) return fail('REL-F413',1009);
+    if (bigSize > BigInt(MAX_FRAME)) return fail('REL-F413',1009,bigSize <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(bigSize) : null);
     size = Number(bigSize); offset = 10;
    }
-   if (size > MAX_FRAME) return fail('REL-F413',1009);
+   if (size > MAX_FRAME) return fail('REL-F413',1009,size);
    if (control && size > 125) return fail('REL-F105');
    const total = offset + 4 + size;
    if (pending.length < total) break;
@@ -120,7 +120,7 @@ function acceptWebSocket(req, socket, head, onMessage, onClose) {
    if (opcode === 0) {
     if (!fragmented) return fail('REL-F103');
     fragmentedBytes += size;
-    if (fragmentedBytes > MAX_MESSAGE) return fail('REL-F413',1009);
+    if (fragmentedBytes > MAX_MESSAGE) return fail('REL-F413',1009,fragmentedBytes);
     fragments.push(data);
     if (fin) {fragmented = false; const complete = Buffer.concat(fragments,fragmentedBytes);fragments=[];fragmentedBytes=0;deliver(complete);}
     continue;
@@ -132,7 +132,7 @@ function acceptWebSocket(req, socket, head, onMessage, onClose) {
   }
   // Only a single partial frame may remain. A complete-message size limit is
   // separately maintained across continuation frames.
-  if (!closing && pending.length > MAX_FRAME + 14) fail('REL-F413',1009);
+  if (!closing && pending.length > MAX_FRAME + 14) fail('REL-F413',1009,pending.length);
  };
  socket.on('data',parse);
  socket.on('close',finalize);

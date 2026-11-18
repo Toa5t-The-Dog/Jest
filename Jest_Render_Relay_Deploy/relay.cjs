@@ -13,6 +13,9 @@ const HOST=process.env.HOST||(process.env.RENDER?'0.0.0.0':'127.0.0.1');
 const rooms=new Map(),visitors=new Map();
 const ALPHABET='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const MAX_ROOMS=100,ROOM_IDLE_LIFETIME=6*3600*1000;
+// Host state messages can exceed the historical 5.6 KB cap. Preserve a
+// 48 KiB application-level limit and the separate 1 KiB guest-action limit.
+const MAX_HOST_PAYLOAD_BYTES=49152;
 // A brief host network outage must not destroy a live match. The host game
 // remains in its existing local process; no private state goes to the relay.
 const HOST_GRACE_MS=Number.isFinite(Number(process.env.JEST_HOST_GRACE_MS))
@@ -37,8 +40,9 @@ function leave(client,details={}){
  if(!client.room)return;
  const reasonCode=typeof details.reasonCode==='string'&&/^REL-[A-Z][0-9]{3}$/.test(details.reasonCode)?details.reasonCode:(client.explicitLeave?'REL-C200':'REL-C100');
  const closeCode=Number.isInteger(details.closeCode)&&details.closeCode>=1000&&details.closeCode<=4999?details.closeCode:null;
+ const frameBytes=Number.isSafeInteger(details.frameBytes)&&details.frameBytes>=0?details.frameBytes:null;
  // No room identifiers, session tokens, user names or private match state in logs.
- console.log(JSON.stringify({event:'relay_disconnect',role:client.role==='host'?'host':'guest',reasonCode,closeCode}));
+ console.log(JSON.stringify({event:'relay_disconnect',role:client.role==='host'?'host':'guest',reasonCode,closeCode,...(frameBytes!==null?{frameBytes}:{})}));
  const room=client.room;client.room=null;
  if(client.role==='host'){
   if(client.explicitLeave)destroyRoom(room);
@@ -140,7 +144,7 @@ function handle(client,message){
   // Only the host can send guest views; the relay does not store them.
   if(!client.room.guest)return client.send({type:'error',error:'No guest connected'});
   if(!message.payload||typeof message.payload!=='object'||Array.isArray(message.payload))return client.send({type:'error',error:'Invalid payload'});
-  if(Buffer.byteLength(JSON.stringify(message.payload),'utf8')>5600)return client.send({type:'error',error:'Payload too large'});
+  if(Buffer.byteLength(JSON.stringify(message.payload),'utf8')>MAX_HOST_PAYLOAD_BYTES)return client.send({type:'error',error:'Payload too large'});
   return client.room.guest.send({type:'hostMessage',payload:message.payload});
  }
  if(client.role==='guest'&&type==='toHost'){
@@ -162,7 +166,7 @@ function handle(client,message){
 const server=http.createServer((req,res)=>{
  const uri=new URL(req.url,'http://localhost');
  if(req.method!=='GET'){res.writeHead(405);return res.end()}
- if(uri.pathname==='/health')return(res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}),res.end(JSON.stringify({ok:true,service:'jest-room-relay',relayRevision:'p1-p3-ws-fragments-v0.28.6-r2',releaseVersion:'0.28.6',maxFrameBytes:8192,maxMessageBytes:8192})));
+ if(uri.pathname==='/health')return(res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}),res.end(JSON.stringify({ok:true,service:'jest-room-relay',relayRevision:'p1-p3-ws-fragments-v0.28.6-r3-size',releaseVersion:'0.28.6',maxFrameBytes:65536,maxMessageBytes:65536,maxHostPayloadBytes:49152})));
  // A match must be joined from an installed copy of Jest. The relay only
  // carries WebSocket messages; it never hosts a playable guest application.
  if(uri.pathname==='/'||uri.pathname==='/join'){
@@ -186,7 +190,7 @@ const cleanup=setInterval(()=>{
  const now=Date.now();for(const room of rooms.values())if(now-room.lastActivity>ROOM_IDLE_LIFETIME){room.host?.send({type:'expired'});destroyRoom(room,'expired')}
  for(const [ip,v]of visitors)if(now>v.reset)visitors.delete(ip);
 },60000);cleanup.unref();
-server.listen(PORT,HOST,()=>console.log(`Jest multiplayer relay p1-p3-ws-fragments-v0.28.6-r2 listening on ${HOST}:${PORT} (Render WSS via the public service URL)`));
+server.listen(PORT,HOST,()=>console.log(`Jest multiplayer relay p1-p3-ws-fragments-v0.28.6-r3-size listening on ${HOST}:${PORT} (Render WSS via the public service URL)`));
 function shutdown(signal){
  for(const room of rooms.values()){try{room.host?.send({type:'hostShutdown'});room.guest?.send({type:'hostShutdown'})}catch{}}
  server.close(()=>process.exit(0));
