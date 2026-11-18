@@ -162,7 +162,7 @@ function handle(client,message){
 const server=http.createServer((req,res)=>{
  const uri=new URL(req.url,'http://localhost');
  if(req.method!=='GET'){res.writeHead(405);return res.end()}
- if(uri.pathname==='/health')return(res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}),res.end(JSON.stringify({ok:true,service:'jest-room-relay',relayRevision:'p1-p3-reconnect-v0.28.6',releaseVersion:'0.28.6',maxFrameBytes:8192})));
+ if(uri.pathname==='/health')return(res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}),res.end(JSON.stringify({ok:true,service:'jest-room-relay',relayRevision:'p1-p3-ws-fragments-v0.28.6-r2',releaseVersion:'0.28.6',maxFrameBytes:8192,maxMessageBytes:8192})));
  // A match must be joined from an installed copy of Jest. The relay only
  // carries WebSocket messages; it never hosts a playable guest application.
  if(uri.pathname==='/'||uri.pathname==='/join'){
@@ -186,7 +186,7 @@ const cleanup=setInterval(()=>{
  const now=Date.now();for(const room of rooms.values())if(now-room.lastActivity>ROOM_IDLE_LIFETIME){room.host?.send({type:'expired'});destroyRoom(room,'expired')}
  for(const [ip,v]of visitors)if(now>v.reset)visitors.delete(ip);
 },60000);cleanup.unref();
-server.listen(PORT,HOST,()=>console.log(`Jest multiplayer relay p1-p3-reconnect-v0.28.6 listening on ${HOST}:${PORT} (Render WSS via the public service URL)`));
+server.listen(PORT,HOST,()=>console.log(`Jest multiplayer relay p1-p3-ws-fragments-v0.28.6-r2 listening on ${HOST}:${PORT} (Render WSS via the public service URL)`));
 function shutdown(signal){
  for(const room of rooms.values()){try{room.host?.send({type:'hostShutdown'});room.guest?.send({type:'hostShutdown'})}catch{}}
  server.close(()=>process.exit(0));
